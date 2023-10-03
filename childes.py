@@ -52,6 +52,7 @@ def main(args):
       if re.search(reMatch, s):
         m = re.search(reMatch, s)
         child = m.group(1)
+        child = re.sub(r'[éè]', r'e', child)  # Anae is not spelt consistently
         sys.stderr.write("CHILD found in header: " + child + '\n')
       sys.stderr.write("AGE found in header: " + age + ' = ' + str(age_days) + 'days\n')
       continue  # no output for the header
@@ -89,11 +90,9 @@ def main(args):
       m = re.search(reMatch, s)
       speaker = m.group(1)
       utt = m.group(2)
-      #sys.stdout.write('\n' + str(sNr) + ' ==== ' + timeCode + '\nSPE=' + speaker + '\nUTT=' + utt + '\nMOR=' + mor)
     splitUtt = cleanUtt(utt)  # clean copy for splitting in to words
-    # concatenate utterances to build taggerInput
-#    taggerInput = taggerInput + " <s_" + str(sNr) + "> " + tokenise(splitUtt)  # prepend tag with sNr
-    taggerInput = taggerInput + " <s_" + uttID + "> " + tokenise(splitUtt)  # prepend tag with sNr
+    # concatenate utterances to build taggerInput. Use tag with uttID as delimiter
+    taggerInput = taggerInput + " <s_" + uttID + "> " + tokenise(splitUtt)
 
     # -------------------------------------------------------
     # split utterance into tokens
@@ -150,8 +149,11 @@ def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas)
           lemma = itemLemmas[uID].split(' ')
           pos = itemPOS[uID].split(' ')
           # update column values
-          col = insertAtIndex(lemma[int(wID)-1], col, lemmaIndex)  # update column
-          col = insertAtIndex(pos[int(wID)-1], col, posIndex)  # update column
+          try:
+            col = insertAtIndex(lemma[int(wID)-1], col, lemmaIndex)  # update column
+            col = insertAtIndex(pos[int(wID)-1], col, posIndex)  # update column
+          except IndexError:
+            pass
           csvout.write('\t'.join(col)+'\n')
         else:
           print('NO UTTERANCE ID FOUND IN '+col[0])
@@ -296,13 +298,13 @@ def treeTagger(str):
         if not os.path.exists(paramFile):
             print("Parameter file not found:", paramFile, " - quitting.")
             quit()
-#    str = re.sub(r'([\'\´\`])', r'\1 ', str)        # quick & dirty tokenization
-#    str = re.sub(r'([\"\.\!,;:])', r' \1 ', str)
     str = re.sub(r' +', r'\n', str)      # 1 word per line
-    # system call for TreeTagger: echo + output to pipe: echo "bla"|tree-tagger parameters options
+    with open('tagged.tmp', 'w') as tmp:
+      tmp.write(str)  # write header
+    # system call for TreeTagger: cat <tmp file>|tree-tagger parameters options
     #    next line takes pipe output as input
     #    check_output() returns output as a byte string that needs to be decoded using decode()
-    p1 = subprocess.Popen(["echo", str], stdout=subprocess.PIPE)
+    p1 = subprocess.Popen(["cat", 'tagged.tmp'], stdout=subprocess.PIPE)
     tagged = subprocess.check_output([taggerBin, paramFile, '-token', '-lemma', '-sgml'], stdin=p1.stdout)
     tagged = tagged.decode('utf8')
     tagged = re.sub(r'\t([A-Za-z:]+)\t', r'_\1=', tagged)         # format annotation format: word_pos=lemma ...
@@ -310,7 +312,7 @@ def treeTagger(str):
     for sentence in tagged.split("<s_"): #taggedItems:    # split the concatenated items
         if sentence == "":   # first element is empty: ignore
             continue
-        reItem = re.compile('^([^>]+)> (.*)') # e.g.: <s_paris-julie.cha_18342>
+        reItem = re.compile('^([^>]+)> (.*)') # e.g.: <s_paris-julie.cha_u18342>
         if re.search(reItem, sentence):  # get the item number from the rest of code, e.g. (<s_)A23
             m = re.search(reItem, sentence)
             sentence = re.sub(r'^([^>]+)> ', ' ', sentence)  # leave a initial space for word matching
