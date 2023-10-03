@@ -3,7 +3,7 @@
 __author__ = "Achim Stein"
 __version__ = "1.0"
 __email__ = "achim.stein@ling.uni-stuttgart.de"
-__status__ = "2.10.23"
+__status__ = "3.10.23"
 __license__ = "GPL"
 
 import sys
@@ -17,12 +17,12 @@ from collections import defaultdict   #  make dictionaries with initialised keys
 import csv
 
 # global vars
-age = child = speaker = utt = uttID = timeCode = ''
+age = child = speaker = utt = uttID = timeCode = splitUtt = ''
 sNr = age_days = 0
 outRows = []
 
 def main(args):
-  global age, child, speaker, utt, uttID, sNr, timeCode    # needed to modify global vars locally
+  global age, child, speaker, utt, uttID, splitUtt, sNr, timeCode    # needed to modify global vars locally
   taggerInput = ''
   with open(args.out_file, 'r', encoding="utf8") as file:  # , newline=''
     all = file.read()
@@ -60,7 +60,7 @@ def main(args):
     # utterances
     # -------------------------------------------------------
     if age_days == 0:
-      sys.stderr.write('Exiting because age could not be determined.\nCheck if file header contains this information and is parsed correctly!\n')
+      sys.stderr.write('Exiting because age could not be determined.\nCheck the file header!\n')
       sys.exit(1)
     timeCode = ''
     utt = ''
@@ -110,15 +110,13 @@ def main(args):
   # ----------------------------------------
   if args.parameters != '':
     sys.stderr.write('Running TreeTagger on taggerInput\n')
-#    sys.stderr.write('Running TreeTagger on taggerInput:\n' + taggerInput + '\n')
     (itemWords, itemPOS, itemLemmas, itemTagged) = treeTagger(taggerInput)
-#    sys.stderr.write('>>>>>>>>< TreeTagger output:\n' + str(itemTagged) + '\n')
 
   # ----------------------------------------
   # output
   # ----------------------------------------
   # write output table: DictWriter matches header and rows, regardless of the order of fields in row
-  outHeader = ['utt_id', 'utt_nr', 'w_nr', 'speaker', 'child', 'age', 'age_days', 'time_code', 'word', 'lemma', 'pos', 'features', 'note', 'utterance']
+  outHeader = ['utt_id', 'utt_nr', 'w_nr', 'speaker', 'child', 'age', 'age_days', 'time_code', 'word', 'lemma', 'pos', 'features', 'note', 'utterance', 'utt_clean']
   with open(args.out_file + '.csv', 'w', newline='') as out:   # newline '' is needed: we have commas in items
     writer = csv.DictWriter(out, delimiter='\t', fieldnames=outHeader)
     writer.writeheader()
@@ -191,7 +189,8 @@ def wordPerLineTagger(splitUtt, mor):
       'lemma': l,
       'features': f,
       'note': '',
-      'utterance': utt
+      'utterance': utt,
+      'utt_clean': splitUtt
       }
     outRows.append(thisRow)   # append dictionary for this row to list of rows
   return(outRows)
@@ -251,7 +250,7 @@ def cleanUtt(s):
     # output: utterance cleaned of special annotation
     s = re.sub(r'<[^>]+> \[//?\] ', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
     s = re.sub(r'<(0|www|xxx|yyy)[^>]+> ?', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
-    s = re.sub(r'\+< ', '', s)  # use a clean copy of utt
+    s = re.sub(r'\+[<,]? ?', '', s)  
     s = re.sub(r'(0|www|xxx|yyy)\s', '', s)  # xxx = incomprehensible – yyy = separate phonetic coding
     s = re.sub(r'\[.*?\] ?', '', s)  # no words
     s = re.sub(r'\(([A-Za-z])\)', r'\1', s)  # delete parentheses around chars

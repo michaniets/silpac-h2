@@ -10,12 +10,19 @@ Processes output csv files exported from the Qualtrics experiment website. This 
 
 ## childes.py
 
-Convert CHILDES chat data to csv.  The output table will have one word per line, to facilitate e.g. studies of vocabulary progression.
-Morphological annotation from '%mor' lines will be added, other annotation lines will be ignored.
+Convert CHILDES chat data to csv where utterances are split into one word per line format.
+The script was built to facilitate studies of vocabulary progression.
+
+- Without -p option: Morphological annotation from '%mor' lines will be used, other annotation lines will be ignored.
+- Option -p <parameters>: Selects a file with TreeTagger parameters.  Tokenises for TreeTagger and uses tagger annotation instead of the original '%mor' line.) All the annotation lines will be ignored.
+
 Tested for some of the French CHILDES files (e.g. Paris).
+
+Bugs: Some utterances are not processed correctly because not all the specifics of the CHAT annotation were implemented.  Watch out for 'INDEX ERROR' messages while processing.
 
 Hints:
 
-- Concatenate *.cha files of one project
-- Run scripts on concatenated file.
+1. Concatenate *.cha files of one project
+2. Run script on concatenated file.
+3. Use -p <parameters> for TreeTagger analysis
 
