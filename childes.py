@@ -121,11 +121,16 @@ def main(args):
     writer.writeheader()
     writer.writerows(outRows)
 
-  sys.stderr.write("output was written to: " + args.out_file + '.csv\n')
   # add tagger output
   if args.parameters != '':
     sys.stderr.write('Adding tagger output for each utterance...\n')
     addTagging(args.out_file + '.csv', args.out_file + '.tagged.csv', outHeader, itemWords, itemPOS, itemLemmas)
+    sys.stderr.write("\nOutput file: " + args.out_file + '.tagged.csv\n')
+    sys.stderr.write("  you can delete the temporary file: " + args.out_file + '.csv\n')
+    sys.stderr.write("  you can delete the temporary file: tagger.tmp")
+  else:
+    sys.stderr.write("output was written to: " + args.out_file + '.csv\n')
+      
 #-------------------------------------------------------
 # functions
 #-------------------------------------------------------
