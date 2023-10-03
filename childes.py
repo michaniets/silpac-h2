@@ -22,7 +22,7 @@ sNr = age_days = 0
 outRows = []
 
 def main(args):
-  global age, child, speaker, utt, uttID, splitUtt, sNr, timeCode    # needed to modify global vars locally
+  global age, age_days, child, speaker, utt, uttID, splitUtt, sNr, timeCode    # needed to modify global vars locally
   taggerInput = ''
   with open(args.out_file, 'r', encoding="utf8") as file:  # , newline=''
     all = file.read()
@@ -33,6 +33,8 @@ def main(args):
     sys.exit(0)
   else:
     sys.stderr.write("Processing " + str(len(sentences)) + ' utterances\n')
+  with open('tagthis.tmp', 'w') as tagthis:  # initialise tagger output file
+    pass
 
   for s in sentences:  # sentence = utterance
     # -------------------------------------------------------
@@ -92,7 +94,11 @@ def main(args):
       utt = m.group(2)
     splitUtt = cleanUtt(utt)  # clean copy for splitting in to words
     # concatenate utterances to build taggerInput. Use tag with uttID as delimiter
-    taggerInput = taggerInput + " <s_" + uttID + "> " + tokenise(splitUtt)
+    if args.parameters != '':
+      with open('tagthis.tmp', 'a') as tagthis:  # for tagger output
+        taggerLine = "<s_" + uttID + "> " + tokenise(splitUtt) + '\n'
+        tagthis.write(taggerLine)
+
 
     # -------------------------------------------------------
     # split utterance into tokens
@@ -109,6 +115,8 @@ def main(args):
   # ----------------------------------------
   if args.parameters != '':
     sys.stderr.write('Running TreeTagger on taggerInput\n')
+    with open('tagthis.tmp', 'r') as tagthis:
+      taggerInput = tagthis.read()
     (itemWords, itemPOS, itemLemmas, itemTagged) = treeTagger(taggerInput)
 
   # ----------------------------------------
@@ -127,7 +135,7 @@ def main(args):
     addTagging(args.out_file + '.csv', args.out_file + '.tagged.csv', outHeader, itemWords, itemPOS, itemLemmas)
     sys.stderr.write("\nOutput file: " + args.out_file + '.tagged.csv\n')
     sys.stderr.write("  you can delete the temporary file: " + args.out_file + '.csv\n')
-    sys.stderr.write("  you can delete the temporary file: tagger.tmp")
+    sys.stderr.write("  you can delete the temporary files: tag*.tmp")
   else:
     sys.stderr.write("output was written to: " + args.out_file + '.csv\n')
       
@@ -143,6 +151,7 @@ def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas)
       lemmaIndex = outHeader.index("lemma") if "lemma" in outHeader else None
       posIndex = outHeader.index("pos") if "pos" in outHeader else None
       featIndex = outHeader.index("features") if "features" in outHeader else None
+      uttIndex = outHeader.index("utterance") if "utterance" in outHeader else None
       next(reader, None) # skip header
       for row in reader:
         col = row[0].split('\t')
@@ -159,6 +168,12 @@ def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas)
             col = insertAtIndex(pos[int(wID)-1], col, posIndex)  # update column
           except IndexError:
             pass
+          # output option depending on tagger output
+          if args.pos_utterance:
+            reMatch = re.compile(args.pos_utterance)
+            if posIndex <= len(col) and not re.search(reMatch, col[posIndex]):
+              col = insertAtIndex('', col, uttIndex)
+          # write this row
           csvout.write('\t'.join(col)+'\n')
         else:
           print('NO UTTERANCE ID FOUND IN '+col[0])
@@ -181,6 +196,13 @@ def wordPerLineTagger(splitUtt, mor):
     wNr += 1
     t = l = f = ''  # will be filled by TreeTagger output
     w = re.sub(r'@.*', '', w)
+    # control if utterance is printed
+    splitUttPrint = ''
+    if args.tagger_utterance:
+        splitUttPrint = splitUtt
+    uttPrint = utt
+    if args.first_utterance and wNr > 1:
+      uttPrint = splitUttPrint = ''
     # build output line for word
     thisRow = {
       'utt_id': uttID + '_w' + str(wNr),
@@ -196,8 +218,8 @@ def wordPerLineTagger(splitUtt, mor):
       'lemma': l,
       'features': f,
       'note': '',
-      'utterance': utt,
-      'utt_clean': splitUtt
+      'utterance': uttPrint,
+      'utt_clean': splitUttPrint
       }
     outRows.append(thisRow)   # append dictionary for this row to list of rows
   return(outRows)
@@ -290,7 +312,8 @@ def treeTagger(str):
     itemPOS = {}  # this dict stores POS tags only
     itemWords = {}  # this dict stores words only
     taggerBin = os.path.expanduser('./tree-tagger')     # TreeTagger binary
-    paramFile = os.path.expanduser('./perceo-spoken-french-utf.par')    # TreeTagger parameters
+    #paramFile = os.path.expanduser('./perceo-spoken-french-utf.par')    # TreeTagger parameters
+    paramFile = os.path.expanduser(args.parameters)    # TreeTagger parameters
     if not os.path.exists(taggerBin):   # verify if tagger files exist
         print("tree-tagger binary not found:", taggerBin, " - trying current working directory...")
         taggerBin = os.path.expanduser('./tree-tagger')     # TreeTagger binary
@@ -352,5 +375,14 @@ Converts childes CHAT format data into one word per line table.
    parser.add_argument(
        '-p', '--parameters', default = "", type = str,
        help='run TreeTagger with this parameter file')
+   parser.add_argument(
+        '-F', '--first_utterance', action='store_true',
+        help='print utterance only for first token')
+   parser.add_argument(
+       '-P', '--pos_utterance', default = "", type = str,
+       help='print utterance only if pos matches this regex')
+   parser.add_argument(
+        '-T', '--tagger_utterance', action='store_true',
+        help='print utterance as converted for tagger')
    args = parser.parse_args()
    main(args)
