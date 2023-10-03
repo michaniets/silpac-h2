@@ -18,11 +18,15 @@ The script was built to facilitate studies of vocabulary progression.
 
 Tested for some of the French CHILDES files (e.g. Paris).
 
-Bugs: Some utterances are not processed correctly because not all the specifics of the CHAT annotation were implemented.  Watch out for 'INDEX ERROR' messages while processing.
-
 Hints:
 
 1. Concatenate *.cha files of one project
 2. Run script on concatenated file.
 3. Use -p <parameters> for TreeTagger analysis
+
+Bugs:
+
+- Some utterances are not processed correctly because not all the specifics of the CHAT annotation were implemented.  Watch out for 'INDEX ERROR' messages while processing.
+
+- CHILDES creates multiword chunks, e.g. for clitic+verb 'y_va'. Maybe delete underscore when cleaning the utterance (splitUtt).
 
