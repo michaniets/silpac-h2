@@ -448,7 +448,7 @@ Converts childes CHAT format data into one word per line table.
         help='print utterance only for first token')
    parser.add_argument(
        '-m', '--match_tagging', default = "", type = str,
-       help='match the tagger output against this regex (TODO: function not finished)')
+       help='match the tagger output against this regex')
    parser.add_argument(
        '-p', '--parameters', default = "", type = str,
        help='run TreeTagger with this parameter file')
