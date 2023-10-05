@@ -55,8 +55,8 @@ def main(args):
         for c in childNr:
           m = re.search(r'@ID:\s+.*\|(.*?)\|([A-Z]+)\|(\d+);(\d+)\.(\d+)\|.*Target_Child\|', c)
           project = m.group(1)
-          key = m.group(2)
-          child = m.group(2) + '_' + project[:3]
+          key = m.group(2)  # use speaker abbrev as key for bio data
+          child = 'n=' + str(len(childNr)) + '_' + project[:3]
           year = m.group(3)
           months = m.group(4)
           days = m.group(5)
@@ -145,7 +145,7 @@ def main(args):
   # output
   # ----------------------------------------
   # write output table: DictWriter matches header and rows, regardless of the order of fields in row
-  outHeader = ['utt_id', 'utt_nr', 'w_nr', 'speaker', 'child', 'age', 'age_days', 'time_code', 'word', 'lemma', 'pos', 'features', 'note', 'utterance', 'utt_clean']
+  outHeader = ['utt_id', 'utt_nr', 'w_nr', 'speaker', 'child_project', 'age', 'age_days', 'time_code', 'word', 'lemma', 'pos', 'features', 'note', 'utterance', 'utt_clean', 'utt_tagged']
   with open(args.out_file + '.csv', 'w', newline='') as out:   # newline '' is needed: we have commas in items
     writer = csv.DictWriter(out, delimiter='\t', fieldnames=outHeader)
     writer.writeheader()
@@ -154,7 +154,7 @@ def main(args):
   # add tagger output
   if args.parameters != '':
     sys.stderr.write('Adding tagger output for each utterance...\n')
-    addTagging(args.out_file + '.csv', args.out_file + '.tagged.csv', outHeader, itemWords, itemPOS, itemLemmas)
+    addTagging(args.out_file + '.csv', args.out_file + '.tagged.csv', outHeader, itemWords, itemPOS, itemLemmas, itemTagged)
     sys.stderr.write("\nOutput file: " + args.out_file + '.tagged.csv\n')
     sys.stderr.write("  you can delete the temporary file: " + args.out_file + '.csv\n')
     sys.stderr.write("  you can delete the temporary files: tag*.tmp")
@@ -164,16 +164,17 @@ def main(args):
 #-------------------------------------------------------
 # functions
 #-------------------------------------------------------
-def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas):
+def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas, itemTagged):
   # read the csv output file and add information from TreeTagger
-  with open(inputFile, 'r') as csvfile:
-    with open(outputFile, 'w') as csvout:
+  with open(inputFile, 'r') as csvfile:    # csv file with empty pos, lemma
+    with open(outputFile, 'w') as csvout:  # csv with filled columns
       csvout.write('\t'.join(outHeader)+'\n')  # write header
       reader = csv.reader(csvfile)
       lemmaIndex = outHeader.index("lemma") if "lemma" in outHeader else None
       posIndex = outHeader.index("pos") if "pos" in outHeader else None
       featIndex = outHeader.index("features") if "features" in outHeader else None
       uttIndex = outHeader.index("utterance") if "utterance" in outHeader else None
+      noteIndex = outHeader.index("note") if "note" in outHeader else None
       next(reader, None) # skip header
       for row in reader:
         col = row[0].split('\t')
@@ -184,12 +185,31 @@ def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas)
           wID = m.group(2)
           lemma = itemLemmas[uID].split(' ')
           pos = itemPOS[uID].split(' ')
+          annotation = []
+          # ----------------------------------------
+          # option -m : parse tagged output
+          # ----------------------------------------
+          if args.match_tagging != '':
+            tagged = itemTagged[uID] #.split(' ')
+            try:
+              if re.search(re.compile(args.match_tagging), pos[int(wID)-1]):
+                annotation = analyseTagging(tagged, lemma[int(wID)-1])
+            except IndexError:
+              pass
+
           # update column values
           try:
-            col = insertAtIndex(lemma[int(wID)-1], col, lemmaIndex)  # update column
-            col = insertAtIndex(pos[int(wID)-1], col, posIndex)  # update column
+            col = insertAtIndex(lemma[int(wID)-1], col, lemmaIndex)
+            col = insertAtIndex(pos[int(wID)-1], col, posIndex)
+            col = insertAtIndex(','.join(annotation), col, noteIndex)  # add the annotation values
           except IndexError:
             pass
+
+          # add a column with the tagger analysis 
+          if args.tagger_output:
+            index = outHeader.index("utt_tagged")
+            col = insertAtIndex(tagged, col, index)  # add the annotation values
+
           # output option depending on tagger output
           if args.pos_utterance:
             reMatch = re.compile(args.pos_utterance)
@@ -198,7 +218,24 @@ def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas)
           # write this row
           csvout.write('\t'.join(col)+'\n')
         else:
-          print('NO UTTERANCE ID FOUND IN '+col[0])
+          print('No utterance ID Found in: ' + col[0])
+
+def analyseTagging(tagged, lemma):
+  # parse tagger output
+  matchedLemma = ''
+  annotation = []
+  # example for verbal token regex word_tag=lemma: ( .*?_VER.*?=\w+)?
+  reRefl = re.compile(' [^_]+_.*?=se [^_]+_VER.*?=(?P<lemma>\w+)')    # try lemma
+# ( reRefl = re.compile(' [^_]+_.*?=se( [^_]+_AUX.*?=\w+)? [^_]+_VER.*?=(?P<lemma>\w+)')
+#  reRefl = re.compile(' [^_]+_.*?=se( [^_]+_VER.*?=\w+) [^_]+_VER.*?=(?P<lemma>\w+)')
+#  reRefl = re.compile(' se_[^ ]+( .*?_VER.*?=\w+) [^_]+_VER.*?=(?P<lemma>\w+)')
+  if re.search(reRefl, tagged):
+    m = re.search(reRefl, tagged)
+    if m.group(1) is not None:
+      matchedLemma = m.group('lemma')
+    if(lemma == matchedLemma):  # annotate only rows where lemma is identical
+      annotation.append('refl') # ('refl:'+matchedLemma)
+  return(annotation)
 
 def insertAtIndex(add, list, index):
   # insert 'add' in list at index
@@ -221,7 +258,7 @@ def wordPerLineTagger(splitUtt, mor):
     w = re.sub(r'@.*', '', w)
     # control if utterance is printed
     splitUttPrint = ''
-    if args.tagger_utterance:
+    if args.tagger_input:
         splitUttPrint = splitUtt
     uttPrint = utt
     if args.first_utterance and wNr > 1:
@@ -236,7 +273,7 @@ def wordPerLineTagger(splitUtt, mor):
       'utt_nr': sNr,
       'w_nr': wNr,
       'speaker': speaker,
-      'child' : child,
+      'child_project' : child,
       'age': age,
       'age_days': age_days,
       'time_code': timeCode,
@@ -291,7 +328,7 @@ def wordPerLineChat(splitUtt, mor):
       'utt_nr': sNr,
       'w_nr': wNr,
       'speaker': speaker,
-      'child' : child,
+      'child_project' : child,
       'age': age,
       'age_days': age_days,
       'time_code': timeCode,
@@ -407,16 +444,22 @@ Converts childes CHAT format data into one word per line table.
        )
    parser.add_argument('out_file', type=str,  help='output file')
    parser.add_argument(
-       '-p', '--parameters', default = "", type = str,
-       help='run TreeTagger with this parameter file')
-   parser.add_argument(
         '-F', '--first_utterance', action='store_true',
         help='print utterance only for first token')
    parser.add_argument(
-       '-P', '--pos_utterance', default = "", type = str,
+       '-m', '--match_tagging', default = "", type = str,
+       help='match the tagger output against this regex (TODO: function not finished)')
+   parser.add_argument(
+       '-p', '--parameters', default = "", type = str,
+       help='run TreeTagger with this parameter file')
+   parser.add_argument(
+       '--pos_utterance', default = "", type = str,
        help='print utterance only if pos matches this regex')
    parser.add_argument(
-        '-T', '--tagger_utterance', action='store_true',
-        help='print utterance as converted for tagger')
+       '--tagger_input', action='store_true',
+       help='print utterance as converted for tagger')
+   parser.add_argument(
+       '--tagger_output', action='store_true',
+       help='print utterance as converted for tagger')
    args = parser.parse_args()
    main(args)
