@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 __author__ = "Achim Stein"
-__version__ = "1.1"
+__version__ = "1.2"
 __email__ = "achim.stein@ling.uni-stuttgart.de"
 __status__ = "4.10.23"
 __license__ = "GPL"
@@ -165,60 +165,66 @@ def main(args):
 # functions
 #-------------------------------------------------------
 def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas, itemTagged):
-  # read the csv output file and add information from TreeTagger
+  # read the csv output file and add information from TreeTagger output
   with open(inputFile, 'r') as csvfile:    # csv file with empty pos, lemma
     with open(outputFile, 'w') as csvout:  # csv with filled columns
-      csvout.write('\t'.join(outHeader)+'\n')  # write header
-      reader = csv.reader(csvfile)
-      lemmaIndex = outHeader.index("lemma") if "lemma" in outHeader else None
-      posIndex = outHeader.index("pos") if "pos" in outHeader else None
-      featIndex = outHeader.index("features") if "features" in outHeader else None
-      uttIndex = outHeader.index("utterance") if "utterance" in outHeader else None
-      noteIndex = outHeader.index("note") if "note" in outHeader else None
-      next(reader, None) # skip header
-      for row in reader:
-        col = row[0].split('\t')
-        reMatch = re.compile('(.*)_w(\d+)') # get utterance ID (= key) and word number
-        if re.search(reMatch, col[0]):
-          m = re.search(reMatch, col[0])
+      writer = csv.writer(csvout, delimiter = "\t")
+      reader = csv.reader(csvfile, delimiter = "\t")
+      data = list(reader)
+      # Iterate through each row and modify a specific cell in each row
+      for l, row in enumerate(data):
+        reMatch = re.compile('(.*)_w(\d+)') # get utterance ID (=key) and word number...
+        if re.search(reMatch, data[l][0]):  # ... from the first col of the row
+          m = re.search(reMatch, data[l][0])
           uID = m.group(1)
           wID = m.group(2)
           lemma = itemLemmas[uID].split(' ')
           pos = itemPOS[uID].split(' ')
           annotation = []
-          # ----------------------------------------
-          # option -m : parse tagged output
-          # ----------------------------------------
-          if args.match_tagging != '':
-            tagged = itemTagged[uID] #.split(' ')
-            try:
-              if re.search(re.compile(args.match_tagging), pos[int(wID)-1]):
-                annotation = analyseTagging(tagged, lemma[int(wID)-1])
-            except IndexError:
-              pass
-
-          # update column values
+          # get column indexes from header
+          lemmaIndex = outHeader.index("lemma") if "lemma" in outHeader else None
+          posIndex = outHeader.index("pos") if "pos" in outHeader else None
+          featIndex = outHeader.index("features") if "features" in outHeader else None
+          uttIndex = outHeader.index("utterance") if "utterance" in outHeader else None
+          noteIndex = outHeader.index("note") if "note" in outHeader else None
+          # insert new lemma (col 9), pos (10), note (11)
           try:
-            col = insertAtIndex(lemma[int(wID)-1], col, lemmaIndex)
-            col = insertAtIndex(pos[int(wID)-1], col, posIndex)
-            col = insertAtIndex(','.join(annotation), col, noteIndex)  # add the annotation values
+            data[l][lemmaIndex] = lemma[int(wID)-1]
           except IndexError:
-            pass
+            print('   INDEX ERROR inserting lemma: %s\n' % data[l])
+          try:
+            data[l][posIndex] = pos[int(wID)-1]
+          except IndexError:
+            print('   INDEX ERROR inserting pos: %s\n' % data[l])
 
+          # ----------------------------------------
+          # output options
+          # ----------------------------------------
+          # -m : parse tagged output
+          if args.match_tagging != '':
+            tagged = itemTagged[uID]
+            try:
+              if re.search(re.compile(args.match_tagging), pos[int(wID)-1]): # if tagger pos matches argument
+                annotation = analyseTagging(tagged, lemma[int(wID)-1])
+                data[l][noteIndex] = ','.join(annotation)
+            except IndexError:
+              print('   INDEX ERROR annotation index 12 of: %s\n' % data[l])
           # add a column with the tagger analysis 
           if args.tagger_output:
             index = outHeader.index("utt_tagged")
-            col = insertAtIndex(tagged, col, index)  # add the annotation values
-
+            data[l][index] = tagged  # add the annotation values
           # output option depending on tagger output
           if args.pos_utterance:
+            uttIndex = outHeader.index("utterance") if "utterance" in outHeader else None
             reMatch = re.compile(args.pos_utterance)
-            if posIndex <= len(col) and not re.search(reMatch, col[posIndex]):
-              col = insertAtIndex('', col, uttIndex)
-          # write this row
-          csvout.write('\t'.join(col)+'\n')
+            if posIndex <= len(data[l]) and not re.search(reMatch, data[l][posIndex]):
+              data[l][uttIndex] = ''  # add the annotation values
+
+          # output table row
+          writer.writerow(row)
         else:
-          print('No utterance ID Found in: ' + col[0])
+          # output header row
+          writer.writerow(row)
 
 def analyseTagging(tagged, lemma):
   # parse tagger output
@@ -259,7 +265,7 @@ def wordPerLineTagger(splitUtt, mor):
     # control if utterance is printed
     splitUttPrint = ''
     if args.tagger_input:
-        splitUttPrint = splitUtt
+      splitUttPrint = splitUtt
     uttPrint = utt
     if args.first_utterance and wNr > 1:
       uttPrint = splitUttPrint = ''
@@ -406,8 +412,10 @@ def treeTagger(str):
     p1 = subprocess.Popen(["cat", 'tagged.tmp'], stdout=subprocess.PIPE)
     tagged = subprocess.check_output([taggerBin, paramFile, '-token', '-lemma', '-sgml'], stdin=p1.stdout)
     tagged = tagged.decode('utf8')
-    tagged = re.sub(r'\t([A-Za-z:]+)\t', r'_\1=', tagged)         # format annotation format: word_pos=lemma ...
-    tagged = re.sub(r'\n', r' ', tagged)                          # put everything on one line
+    tagged = re.sub(r'\t([A-Za-z:]+)\t', r'_\1=', tagged)         # annotation format: word_pos=lemma ...
+    tagged = re.sub(r'\n', ' ', tagged)                          # put everything on one line
+    # Tagger corrections (TODO improve)
+    tagged = re.sub(r'([,\?])_NAM=<unknown>', r'\\1_PON=,', tagged)
     for sentence in tagged.split("<s_"): #taggedItems:    # split the concatenated items
         if sentence == "":   # first element is empty: ignore
             continue
