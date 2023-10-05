@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
 __author__ = "Achim Stein"
-__version__ = "1.0"
+__version__ = "1.1"
 __email__ = "achim.stein@ling.uni-stuttgart.de"
-__status__ = "3.10.23"
+__status__ = "4.10.23"
 __license__ = "GPL"
 
 import sys
@@ -17,17 +17,21 @@ from collections import defaultdict   #  make dictionaries with initialised keys
 import csv
 
 # global vars
-age = child = speaker = utt = uttID = timeCode = splitUtt = ''
+age = child = speaker = utt = uttID = timeCode = splitUtt = pid = ''
 sNr = age_days = 0
 outRows = []
+childData = {}
 
 def main(args):
-  global age, age_days, child, speaker, utt, uttID, splitUtt, sNr, timeCode    # needed to modify global vars locally
-  taggerInput = ''
+  global age, age_days, child, childData, speaker, utt, uttID, pid, splitUtt, sNr, timeCode, outRows    # needed to modify global vars locally
+  age = child = taggerInput = pid = ''
+  age_days = 0
+  childData = {}  # store age for a child
   with open(args.out_file, 'r', encoding="utf8") as file:  # , newline=''
-    all = file.read()
     sys.stderr.write("Reading " + args.out_file +'\n')
-    sentences = all.split('\n*')
+    all = file.read()
+    all = re.sub('@END', '*\n', all)  # insert delimiter at end of file
+    sentences = all.split('\n*')   # split utterances at '*', e.g. *CHI:
   if len(sentences) <= 1:
     sys.stderr.write("No output sentences found. " + str(len(sentences)) + " Exiting.\n")
     sys.exit(0)
@@ -38,45 +42,64 @@ def main(args):
 
   for s in sentences:  # sentence = utterance
     # -------------------------------------------------------
-    # file header with biographic data
+    # parse file header
     # -------------------------------------------------------
-    # example: @ID: fra|Paris|CHI|0;11.18|female|||Target_Child|||
-    reMatch = re.compile('@ID:.*\|CHI\|(\d+);(\d+)\.(\d+)\|.*Target_Child')
-    if re.search(reMatch, s):
-      m = re.search(reMatch, s)
-      year = m.group(1)
-      months = m.group(2)
-      days = m.group(3)
-      age = year + ';' + months + '.' + days
-      age_days = int(int(year) * 365 + int(months) * 30.4 + int(days))
-      # get the child's name, e.g. @Participants:	CHI Tim Target_Child, MOT Mother Mother...
-      reMatch = re.compile('@Participants:.*CHI\s(.*?)\sTarget_Child')
-      if re.search(reMatch, s):
-        m = re.search(reMatch, s)
-        child = m.group(1)
-        child = re.sub(r'[éè]', r'e', child)  # Anae is not spelt consistently
-        sys.stderr.write("CHILD found in header: " + child + '\n')
-      sys.stderr.write("AGE found in header: " + age + ' = ' + str(age_days) + 'days\n')
+    # use PID to identify header
+    rePID = re.compile('@PID:.*/.*?0*(\d+)')
+    if re.search(rePID, s):
+      m = re.search(rePID, s)
+      pid = m.group(1)
+      # check for more than one Target_Child
+      childNr = re.findall(r'@ID:\s+.*\|.*?\|[A-Z]+\|\d+;\d+\.\d+\|.*Target_Child\|', s)
+      if len(childNr) > 1:
+        for c in childNr:
+          m = re.search(r'@ID:\s+.*\|(.*?)\|([A-Z]+)\|(\d+);(\d+)\.(\d+)\|.*Target_Child\|', c)
+          project = m.group(1)
+          key = m.group(2)
+          child = m.group(2) + '_' + project[:3]
+          year = m.group(3)
+          months = m.group(4)
+          days = m.group(5)
+          age = year + ';' + months + '.' + days
+          age_days = int(int(year) * 365 + int(months) * 30.4 + int(days))
+          childData[key] = (child, age, age_days)   # store bio data in dict
+      else:
+        # just one Target_Child  (TODO: redundant, include above)
+        # example: @ID: fra|Paris|CHI|0;11.18|female|||Target_Child|||
+        reMatch = re.compile('@ID:.*\|(.*?)\|[A-Z]+\|(\d+);(\d+)\.(\d+)\|.*Target_Child')
+        if re.search(reMatch, s):
+          m = re.search(reMatch, s)
+          project = m.group(1)
+          year = m.group(2)
+          months = m.group(3)
+          days = m.group(4)
+          age = year + ';' + months + '.' + days
+          age_days = int(int(year) * 365 + int(months) * 30.4 + int(days))
+          # get the child's name, e.g. @Participants:	CHI Tim Target_Child, MOT Mother Mother...
+          reMatch = re.compile('@Participants:.*CHI\s(.*?)\sTarget_Child')
+          if re.search(reMatch, s):
+            m = re.search(reMatch, s)
+            child = re.sub(r'[éè]', r'e', child)  # Anae is not spelt consistently
+            child = m.group(1) + '_' + project[:3]  # disambiguate identical child names
+            childData['CHI'] = (child, age, age_days)   # store bio data in dict
+      sys.stderr.write("PID: %s / CHILD: %s / AGE: %s = %s days\n" % (pid, child, age, str(age_days)))
       continue  # no output for the header
-
-    # -------------------------------------------------------
-    # utterances
-    # -------------------------------------------------------
-    if age_days == 0:
-      sys.stderr.write('Exiting because age could not be determined.\nCheck the file header!\n')
+    if pid == '':       # verify if header was parsed
+      sys.stderr.write('!!!!! ERROR: missing header info. Check the file header! Exiting at utterance:\n')
+      sys.stderr.write(s)
       sys.exit(1)
-    timeCode = ''
-    utt = ''
-    mor = ''
-    speaker = ''
+    # -------------------------------------------------------
+    # parse utterance
+    # -------------------------------------------------------
+    timeCode = utt = mor = speaker = ''
     tags = []
     sNr += 1
-    uttID = args.out_file + '_u' + str(sNr)
+    uttID = pid + '_u' + str(sNr)     # args.out_file + '_u' + str(sNr)
     # general substitution
     s = re.sub(r'‹', '<', s)
     s = re.sub(r'›', '>', s)
     s = re.sub(r'\n\s+', ' ', s, re.DOTALL)  # append multi-line to first line
-    # get utterance code (delimited by ^U)
+    # get utterance time? code (delimited by ^U)
     if re.search(r'(.*?)', s):
       m = re.search(r'(.*?)', s)
       timeCode = m.group(1)
@@ -86,19 +109,18 @@ def main(args):
     if re.search(reMatch, s):
       m = re.search(reMatch, s)
       mor = m.group(1)
-    # match speaker and utterance
+    # match speaker and utterance -- TODO: handle Palasis corpus (no 'CHI', but several child name abbrevs)
     reMatch = re.compile('^([A-Z]+):\s+(.*?)\n')
     if re.search(reMatch, s):
       m = re.search(reMatch, s)
       speaker = m.group(1)
       utt = m.group(2)
     splitUtt = cleanUtt(utt)  # clean copy for splitting in to words
-    # concatenate utterances to build taggerInput. Use tag with uttID as delimiter
+    # concatenate utterances to build taggerInput. Use tag with uttID
     if args.parameters != '':
       with open('tagthis.tmp', 'a') as tagthis:  # for tagger output
         taggerLine = "<s_" + uttID + "> " + tokenise(splitUtt) + '\n'
         tagthis.write(taggerLine)
-
 
     # -------------------------------------------------------
     # split utterance into tokens
@@ -180,18 +202,19 @@ def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas)
 
 def insertAtIndex(add, list, index):
   # insert 'add' in list at index
-  if len(list) < index+1:
-    sys.stderr.write('INDEX ERROR FOR LIST of len=' + str(len(list)) + '>>' + str(list) + '\n')
-  else:
+  #if len(list) < index+1:
+  if index < len(list):
     list[index] = add
+  else:
+    sys.stderr.write('INDEX ERROR FOR LIST of len=' + str(len(list)) + ' index='+ str(index) + ' >>' + str(list) + '\n')
   return(list)
 
 def wordPerLineTagger(splitUtt, mor):
   # for TreeTagger annotation: build one line (table row) for each token in utterance
-  tags = ''
-  words = tokenise(splitUtt).split(' ')
-  wNr = 0
+  age = tags = ''
+  age_days = wNr = 0
   thisRow = {}
+  words = tokenise(splitUtt).split(' ')
   for w in words:
     wNr += 1
     t = l = f = ''  # will be filled by TreeTagger output
@@ -203,6 +226,10 @@ def wordPerLineTagger(splitUtt, mor):
     uttPrint = utt
     if args.first_utterance and wNr > 1:
       uttPrint = splitUttPrint = ''
+    # read bio data for this speaker
+    if childData.get(speaker) != None:
+      age = childData[speaker][1]
+      age_days = childData[speaker][2]
     # build output line for word
     thisRow = {
       'utt_id': uttID + '_w' + str(wNr),
@@ -226,7 +253,9 @@ def wordPerLineTagger(splitUtt, mor):
 
 def wordPerLineChat(splitUtt, mor):
   # for CHAT format: build one line (table row) for each token in utterance
-  tags = ''
+  age = tags = ''
+  age_days = wNr = 0
+  thisRow = {}
   words = splitUtt.split(' ')
   if mor != '':
     tags = mor.split(' ')
@@ -252,6 +281,10 @@ def wordPerLineChat(splitUtt, mor):
             m = re.search(r'(.*?)[-&](.*)', l)  # split lemma and morphology (lemma-INF, lemma$PRES...)
             l = m.group(1)
             f = m.group(2)
+    # read bio data for this speaker
+    if childData.get(speaker) != None:
+      age = childData[speaker][1]
+      age_days = childData[speaker][2]
     # build output line for word
     thisRow = {
       'utt_id': uttID + '_w' + str(wNr),
@@ -284,11 +317,12 @@ def cleanUtt(s):
     s = re.sub(r'\[.*?\] ?', '', s)  # no words
     s = re.sub(r'\(([A-Za-z])\)', r'\1', s)  # delete parentheses around chars
     s = re.sub(r' \+/+', ' ', s)  # annotations for pauses (?) e.g. +//.
-    s = re.sub(r'\s+', r' ', s)  # reduce spaces
+    s = re.sub(r'[_=]', ' ', s)  # eliminate _ and = 
+    s = re.sub(r'\s+', ' ', s)  # reduce spaces
     return(s)
 
 def tokenise(s):
-    # tokenise sentence for TreeTagger  (WIP - TODO: add rules from tokenise.pl)
+    # tokenise sentence for TreeTagger  (WIP - TODO: add rules from tokenise.pl + add Italian rules)
     # input:  unprocessed sentence
     # output: sentence tokenised for TreeTagger
     # 1) define cutoff characters and strings at beginning and end of tokens
@@ -301,7 +335,7 @@ def tokenise(s):
     s = re.sub(reBeginString, r'\1 ', s)
     s = re.sub(reEndChar, r' \1', s)
     s = re.sub(reEndString, r' \1', s)
-    s = re.sub(r'\s+', r' ', s)  # reduce spaces
+    s = re.sub(r'\s+', ' ', s)  # reduce spaces
     return(s)
 
 def treeTagger(str):

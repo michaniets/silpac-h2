@@ -28,5 +28,4 @@ Bugs:
 
 - Some utterances are not processed correctly because not all the specifics of the CHAT annotation were implemented.  Watch out for 'INDEX ERROR' messages while processing.
 
-- CHILDES creates multiword chunks, e.g. for clitic+verb 'y_va'. Maybe delete underscore when cleaning the utterance (splitUtt).
 
