@@ -16,6 +16,8 @@ The script was built to facilitate studies of vocabulary progression.
 - Without -p option: Morphological annotation from '%mor' lines will be used, other annotation lines will be ignored.
 - Option -p <parameters>: Selects a file with TreeTagger parameters.  Tokenises for TreeTagger and uses tagger annotation instead of the original '%mor' line.) All the annotation lines will be ignored.
 
+(Looking for a better written script? J. Kodner has one, [here]([url](https://github.com/jkodner05/method.git)).)
+
 Tested for some of the French CHILDES files (e.g. Paris).
 
 Hints:
