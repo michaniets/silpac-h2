@@ -1,8 +1,8 @@
 # silpac-h2
 Utilities created in project H2 of the DFG research unit [SILPAC](https://silpac.uni-mannheim.de) (FOR 5157)
 
-This repository contains mostly scripts that were created for a specific research task (linguistics, psycholinguistics). Beware that the author is not a programming export, scripts may not be well documented and often are in a work-in-progress state.
-You are nevertheless welcome to use them, adapt them to your needs and give feedback on them.
+This repository contains mostly scripts that were created for a specific research task (linguistics, psycholinguistics). Note that the author is not a programmer, scripts may not be well documented and are often in a work-in-progress state.
+You are welcome to use them, adapt them to your needs and give feedback on them.
 
 ## pb1-parse-qualtrics.py
 
@@ -23,6 +23,11 @@ Hints:
 1. Concatenate *.cha files of one project
 2. Run script on concatenated file.
 3. Use -p <parameters> for TreeTagger analysis
+
+Example: concatenated French CHILDES projects, tagged with parameters for spoken French
+
+> childes.py -m VER --pos_utterance VER -p perceo-spoken-french-utf.par CHILDES-French-SILPAC.cha
+
 
 Bugs:
 
