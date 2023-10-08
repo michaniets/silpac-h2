@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
 __author__ = "Achim Stein"
-__version__ = "1.2"
+__version__ = "1.3"
 __email__ = "achim.stein@ling.uni-stuttgart.de"
-__status__ = "4.10.23"
+__status__ = "7.10.23"
 __license__ = "GPL"
 
 import sys
@@ -47,40 +47,37 @@ def main(args):
     # use PID to identify header
     rePID = re.compile('@PID:.*/.*?0*(\d+)')
     if re.search(rePID, s):
+      if re.search (r'@Comment:.*dummy file', s):
+        continue
       m = re.search(rePID, s)
       pid = m.group(1)
-      # check for more than one Target_Child
-      childNr = re.findall(r'@ID:\s+.*\|.*?\|[A-Z]+\|\d+;\d+\.\d+\|.*Target_Child\|', s)
+      childData = {}  # empty childData bio dictionary
+      # check for more than one Target_Child (French: only in Palasis)
+      childNr = re.findall(r'@ID:\s+.*\|.*?\|[A-Z]+\|(\d.*?)\|.*Target_Child\|', s)
       if len(childNr) > 1:
         for c in childNr:
-          m = re.search(r'@ID:\s+.*\|(.*?)\|([A-Z]+)\|(\d+);(\d+)\.(\d+)\|.*Target_Child\|', c)
+          m = re.search(r'@ID:\s+.*\|(.*?)\|([A-Z]+)\|(\d.*?)\|.*Target_Child\|', c)
+          sys.stderr.write("----- reading header ID %s\n" % (c))
           project = m.group(1)
           key = m.group(2)  # use speaker abbrev as key for bio data
+          age, age_days = parseAge(m.group(3))
           child = 'n=' + str(len(childNr)) + '_' + project[:3]
-          year = m.group(3)
-          months = m.group(4)
-          days = m.group(5)
-          age = year + ';' + months + '.' + days
-          age_days = int(int(year) * 365 + int(months) * 30.4 + int(days))
           childData[key] = (child, age, age_days)   # store bio data in dict
       else:
         # just one Target_Child  (TODO: redundant, include above)
         # example: @ID: fra|Paris|CHI|0;11.18|female|||Target_Child|||
-        reMatch = re.compile('@ID:.*\|(.*?)\|[A-Z]+\|(\d+);(\d+)\.(\d+)\|.*Target_Child')
+        reMatch = re.compile('@ID:.*\|(.*?)\|[A-Z]+\|(\d.*?)\|.*Target_Child')
         if re.search(reMatch, s):
           m = re.search(reMatch, s)
           project = m.group(1)
-          year = m.group(2)
-          months = m.group(3)
-          days = m.group(4)
-          age = year + ';' + months + '.' + days
-          age_days = int(int(year) * 365 + int(months) * 30.4 + int(days))
+          age, age_days = parseAge(m.group(2))
           # get the child's name, e.g. @Participants:	CHI Tim Target_Child, MOT Mother Mother...
           reMatch = re.compile('@Participants:.*CHI\s(.*?)\sTarget_Child')
           if re.search(reMatch, s):
             m = re.search(reMatch, s)
-            child = re.sub(r'[éè]', r'e', child)  # Anae is not spelt consistently
             child = m.group(1) + '_' + project[:3]  # disambiguate identical child names
+            child = re.sub(r'[éè]', 'e', child)  # Anae is not spelt consistently
+            child = re.sub(r'Ann_Yor', 'Anne_Yor', child)  # repair inconsistency
             childData['CHI'] = (child, age, age_days)   # store bio data in dict
       sys.stderr.write("PID: %s / CHILD: %s / AGE: %s = %s days\n" % (pid, child, age, str(age_days)))
       continue  # no output for the header
@@ -126,7 +123,7 @@ def main(args):
     # split utterance into tokens
     # -------------------------------------------------------
     # list of table rows 
-    if speaker != '': #len(splitUtt.split(' ')) > 1:
+    if speaker != '':
       if args.parameters == '':
         outRows = wordPerLineChat(splitUtt, mor)
       else:
@@ -164,6 +161,22 @@ def main(args):
 #-------------------------------------------------------
 # functions
 #-------------------------------------------------------
+def parseAge(age):
+  # parse the age string, correct errors, return age in days
+  year = months = days = 0
+  m = re.search(r'(\d+);', age)
+  if m:
+    year = m.group(1)
+  m = re.search(r'\d+;(\d+)', age)
+  if m:
+    months = m.group(1)
+  m = re.search(r'\d+;\d+\.(\d+)', age)
+  if m:
+    days = m.group(1)
+  #age = year + ';' + months + '.' + days
+  age_days = int(int(year) * 365 + int(months) * 30.4 + int(days))
+  return(age, age_days)
+
 def addTagging(inputFile, outputFile, outHeader, itemWords, itemPOS, itemLemmas, itemTagged):
   # read the csv output file and add information from TreeTagger output
   with open(inputFile, 'r') as csvfile:    # csv file with empty pos, lemma
@@ -241,6 +254,22 @@ def analyseTagging(tagged, lemma):
       matchedLemma = m.group('lemma')
     if(lemma == matchedLemma):  # annotate only rows where lemma is identical
       annotation.append('refl') # ('refl:'+matchedLemma)
+  # 'dative' complements with à, au, lui
+  #reDat = re.compile('[^_]+_VER.*?=(?P<lemma>\w+) [^_]+_.*?=à ')
+  reDat = re.compile('[^_]+_VER.*?=(?P<lemma>\w+) (à|au|aux)_[^ ]+')
+  if re.search(reDat, tagged):
+    m = re.search(reDat, tagged)
+    if m.group(1) is not None:
+      matchedLemma = m.group('lemma')
+    if(lemma == matchedLemma):  # annotate only rows where lemma is identical
+      annotation.append('dat') # ('dat:'+matchedLemma)
+  reDatCl = re.compile('(lui|leur)_[^ ]+ [^_]+_VER.*?=(?P<lemma>\w+)')
+  if re.search(reDatCl, tagged):
+    m = re.search(reDatCl, tagged)
+    if m.group(1) is not None:
+      matchedLemma = m.group('lemma')
+    if(lemma == matchedLemma):  # annotate only rows where lemma is identical
+      annotation.append('datclit') # ('dat:'+matchedLemma)
   return(annotation)
 
 def insertAtIndex(add, list, index):
@@ -259,6 +288,8 @@ def wordPerLineTagger(splitUtt, mor):
   thisRow = {}
   words = tokenise(splitUtt).split(' ')
   for w in words:
+    if w == '':
+      continue
     wNr += 1
     t = l = f = ''  # will be filled by TreeTagger output
     w = re.sub(r'@.*', '', w)
@@ -353,7 +384,10 @@ def cleanUtt(s):
     # delete specific CHILDES annotation not needed for pos tagging (WIP - TODO check CHILDES documentation)
     # input:  unprocessed utterance
     # output: utterance cleaned of special annotation
+    s = re.sub(r'0faire ', 'faire ', s) # faire + Inf is transcribed as '0faire' in York
     s = re.sub(r'<[^>]+> \[//?\] ', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
+    s = re.sub(r'\[\!\] ?', ' ', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
+    s = re.sub(r'<([^>]+)>\s+\[%[^\]]+\]', '\1', s) # corrections: qui <va> [% sdi=vais] la raconter . > va
     s = re.sub(r'<(0|www|xxx|yyy)[^>]+> ?', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
     s = re.sub(r'\+[<,]? ?', '', s)  
     s = re.sub(r'(0|www|xxx|yyy)\s', '', s)  # xxx = incomprehensible – yyy = separate phonetic coding
@@ -415,7 +449,7 @@ def treeTagger(str):
     tagged = re.sub(r'\t([A-Za-z:]+)\t', r'_\1=', tagged)         # annotation format: word_pos=lemma ...
     tagged = re.sub(r'\n', ' ', tagged)                          # put everything on one line
     # Tagger corrections (TODO improve)
-    tagged = re.sub(r'([,\?])_NAM=<unknown>', r'\\1_PON=,', tagged)
+    tagged = re.sub(r'([,\?])_NAM=<unknown>', r'\1_PON=,', tagged)
     for sentence in tagged.split("<s_"): #taggedItems:    # split the concatenated items
         if sentence == "":   # first element is empty: ignore
             continue
