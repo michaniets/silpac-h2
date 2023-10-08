@@ -53,7 +53,7 @@ def main(args):
       pid = m.group(1)
       childData = {}  # empty childData bio dictionary
       # check for more than one Target_Child (French: only in Palasis)
-      childNr = re.findall(r'@ID:\s+.*\|.*?\|[A-Z]+\|(\d.*?)\|.*Target_Child\|', s)
+      childNr = re.findall(r'@ID:\s+.*\|.*?\|[A-Z]+\|.*?\|.*Target_Child\|', s)
       if len(childNr) > 1:
         for c in childNr:
           m = re.search(r'@ID:\s+.*\|(.*?)\|([A-Z]+)\|(\d.*?)\|.*Target_Child\|', c)
@@ -66,6 +66,9 @@ def main(args):
       else:
         # just one Target_Child  (TODO: redundant, include above)
         # example: @ID: fra|Paris|CHI|0;11.18|female|||Target_Child|||
+
+        if re.search(r"CHI Target_Child , TAT Tata Babysitter", s):  # correct error in one file header
+          s = re.sub("CHI Target_Child , TAT Tata Babysitter", "CHI Anne Target_Child , TAT Tata Babysitter", s)
         reMatch = re.compile('@ID:.*\|(.*?)\|[A-Z]+\|(\d.*?)\|.*Target_Child')
         if re.search(reMatch, s):
           m = re.search(reMatch, s)
