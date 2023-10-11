@@ -15,15 +15,24 @@ from xmlrpc.client import boolean
 import subprocess   # for system commands, here: tree-tagger
 from collections import defaultdict   #  make dictionaries with initialised keys (avoids KeyError)
 import csv
+# ADDED TR
+from childes.tokenizers import Tokenizer
 
 # global vars
 age = child = speaker = utt = uttID = timeCode = splitUtt = pid = ''
 sNr = age_days = 0
 outRows = []
 childData = {}
+# ADDED TR
+# Here are all the possible tokenizers
+TOKENIZERS = ['ASTokenizer']
+# Here we are initializing the variable tokenizer as a global
+tokenizer = None
+# END
+
 
 def main(args):
-  global age, age_days, child, childData, speaker, utt, uttID, pid, splitUtt, sNr, timeCode, outRows    # needed to modify global vars locally
+  global age, age_days, child, childData, speaker, utt, uttID, pid, splitUtt, sNr, timeCode, outRows, tokenizer    # needed to modify global vars locally
   age = child = taggerInput = pid = ''
   age_days = 0
   childData = {}  # store age for a child
@@ -39,7 +48,6 @@ def main(args):
     sys.stderr.write("Processing " + str(len(sentences)) + ' utterances\n')
   with open('tagthis.tmp', 'w') as tagthis:  # initialise tagger output file
     pass
-
   for s in sentences:  # sentence = utterance
     # -------------------------------------------------------
     # parse file header
@@ -115,11 +123,14 @@ def main(args):
       m = re.search(reMatch, s)
       speaker = m.group(1)
       utt = m.group(2)
-    splitUtt = cleanUtt(utt)  # clean copy for splitting in to words
+    # ADDED TR: (re)initialize Tokenizer
+    tokenizer = Tokenizer.create(args.tokenizer)
+    # END
+    splitUtt = tokenizer.cleanUtt(utt)  # clean copy for splitting in to words
     # concatenate utterances to build taggerInput. Use tag with uttID
     if args.parameters != '':
       with open('tagthis.tmp', 'a') as tagthis:  # for tagger output
-        taggerLine = "<s_" + uttID + "> " + tokenise(splitUtt) + '\n'
+        taggerLine = "<s_" + uttID + "> " + tokenizer.tokenise(splitUtt) + '\n'
         tagthis.write(taggerLine)
 
     # -------------------------------------------------------
@@ -289,7 +300,7 @@ def wordPerLineTagger(splitUtt, mor):
   age = tags = ''
   age_days = wNr = 0
   thisRow = {}
-  words = tokenise(splitUtt).split(' ')
+  words = tokenizer.tokenise(splitUtt).split(' ')
   for w in words:
     if w == '':
       continue
@@ -383,41 +394,6 @@ def wordPerLineChat(splitUtt, mor):
 #    return(w,t,l,f)
   return(outRows)
 
-def cleanUtt(s):
-    # delete specific CHILDES annotation not needed for pos tagging (WIP - TODO check CHILDES documentation)
-    # input:  unprocessed utterance
-    # output: utterance cleaned of special annotation
-    s = re.sub(r'0faire ', 'faire ', s) # faire + Inf is transcribed as '0faire' in York
-    s = re.sub(r'<[^>]+> \[//?\] ', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
-    s = re.sub(r'\[\!\] ?', ' ', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
-    s = re.sub(r'<([^>]+)>\s+\[%[^\]]+\]', '\1', s) # corrections: qui <va> [% sdi=vais] la raconter . > va
-    s = re.sub(r'<(0|www|xxx|yyy)[^>]+> ?', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
-    s = re.sub(r'\+[<,]? ?', '', s)  
-    s = re.sub(r'(0|www|xxx|yyy)\s', '', s)  # xxx = incomprehensible – yyy = separate phonetic coding
-    s = re.sub(r'\[.*?\] ?', '', s)  # no words
-    s = re.sub(r'\(([A-Za-z])\)', r'\1', s)  # delete parentheses around chars
-    s = re.sub(r' \+/+', ' ', s)  # annotations for pauses (?) e.g. +//.
-    s = re.sub(r'[_=]', ' ', s)  # eliminate _ and = 
-    s = re.sub(r'\s+', ' ', s)  # reduce spaces
-    return(s)
-
-def tokenise(s):
-    # tokenise sentence for TreeTagger  (WIP - TODO: add rules from tokenise.pl + add Italian rules)
-    # input:  unprocessed sentence
-    # output: sentence tokenised for TreeTagger
-    # 1) define cutoff characters and strings at beginning and end of tokens
-    reBeginChar = re.compile('(\[\|\{\(\/\'\´\`"»«°)') 
-    reEndChar = re.compile('(\]\|\}\/\'\`\"\),;:\!\?\%»«)') 
-    reBeginString = re.compile('([dcjlmnstDCJLNMST]\'|[Qq]u\'|[Jj]usqu\'|[Ll]orsqu\')') 
-    reEndString = re.compile('(-t-elles?|-t-ils?|-t-on|-ce|-elles?|-ils?|-je|-la|-les?|-leur|-lui|-mêmes?|-m\'|-moi|-nous|-on|-toi|-tu|-t\'|-vous|-en|-y|-ci|-là)') 
-    # 2) cut
-    s = re.sub(reBeginChar, r'\1 ', s)
-    s = re.sub(reBeginString, r'\1 ', s)
-    s = re.sub(reEndChar, r' \1', s)
-    s = re.sub(reEndString, r' \1', s)
-    s = re.sub(r'\s+', ' ', s)  # reduce spaces
-    return(s)
-
 def treeTagger(str):
     # input:  concatenated target items
     # output: tagged items stored in dictionaries with item IDs as key
@@ -506,5 +482,10 @@ Converts childes CHAT format data into one word per line table.
    parser.add_argument(
        '--tagger_output', action='store_true',
        help='print utterance as converted for tagger')
+   # ADDED TR
+   parser.add_argument('--tokenizer', choices=TOKENIZERS, default='ASTokenizer',
+        help='Select tokenizer:\n   - ASTokenizer: Original tokenizer by AS (default)'
+   )
+   # END
    args = parser.parse_args()
    main(args)
