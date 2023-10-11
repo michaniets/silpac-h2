@@ -1,4 +1,4 @@
-import re
+import re, collections
 
 class Tokenizer():
     """
@@ -18,6 +18,11 @@ class Tokenizer():
         tokens.
     """
     
+    # Globals determine the behaviour of cleanUtt
+    
+    DEFAULT = 0
+    STANDARD = 1
+    
     def __init__(self):
         pass
     
@@ -35,9 +40,54 @@ class Tokenizer():
               raise ValueError('Bad tokenizer type {}'.format(tokenizer_type))
         return TOKENIZER_TYPE_TO_CLASS_MAP[tokenizer_type]()
         
-    def cleanUtt(self, s):
-        # Default method: does nothing
-        return s
+    def cleanUtt(self, s, form=DEFAULT):
+        """
+        Global method to parse CHILDES markup (pre-tokenization), no
+        language-specific settings.
+        
+        Parameters:
+            s           :  string to clean
+            form (int)  :  constant determining how cleanUtt handles corrections
+            
+        Returns:
+            cleanUtt(self, s, [form=DEFAULT]):
+                A string with CHILDES markup removed.
+        """
+        
+        # Step 1. First, deal with structures which may include whitespace
+        # CORRECTIONS (of the kind vì [: qui ])
+        m = re.match(r'([^\s]+)\s+\[:\s*([^\]]+)\s*\]', s) 
+        if m and form == STANDARD:
+            # Replace with the correction
+            s = s[:m.start()] + ' ' + m.group(2).replace(' ', '-') + ' ' + s[m.end():]
+        elif m:
+            # Replace with the uttered word
+            s = s[:m.start()] + ' ' + m.group(1) + ' ' + s[m.end():]
+            
+        # TODO: repetitions, other coding of corrections in French CHILDES
+            
+        # Step 2. Parse whitespace-delimited items
+        s = re.sub(r'\s+', ' ', s)  # reduce spaces
+        toks = []
+        for tok in s.split('\s'):
+            if form == STANDARD:
+                # Where the most standard form of a token is sought.
+                tok = re.sub(r'&[~\-+]', '', tok) # &- initials
+                tok = re.sub(r'[()]', '', tok) # Remove all parentheses (corrections).
+        
+            # General replacements
+            tok = re.sub(r'^\(\.+\)', '', tok) # Delete all pauses.
+            tok = re.sub(r'@[^\s]+', '', tok) # @ tags: removed in all forms
+            tok = re.sub(r'^0.*', '', tok) # Delete all 0s (they weren't realized)
+            tok = re.sub(r'^&=.*', '', tok) # Delete all &= (events)
+            tok = re.sub(r'^+.*[\.\?\!]$', '.', tok) # Replace all + events ending in a period or question with a period
+            tok = re.sub(r'^+.*', '', tok) # Delete all other + events
+            tok = re.sub(r'^\[[<>]\]$', '', tok) # Delete all overlap event markers
+            tok = re.sub(r'[_=]', '\s', tok) # Replace all underscores and equals signs with spaces
+            
+            if tok: toks.append(tok)
+            
+        return ' '.join(toks)
         
     def tokenise(self, s):
         # Default method: does nothing
