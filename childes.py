@@ -25,7 +25,7 @@ outRows = []
 childData = {}
 # ADDED TR
 # Here are all the possible tokenizers
-TOKENIZERS = ['ASTokenizer']
+TOKENIZERS = ['ASTokenizer', 'FrenchTokenizer']
 # Here we are initializing the variable tokenizer as a global
 tokenizer = None
 # END
@@ -484,7 +484,8 @@ Converts childes CHAT format data into one word per line table.
        help='print utterance as converted for tagger')
    # ADDED TR
    parser.add_argument('--tokenizer', choices=TOKENIZERS, default='ASTokenizer',
-        help='Select tokenizer:\n   - ASTokenizer: Original tokenizer by AS (default)'
+        help='Select tokenizer:\n   - ASTokenizer: Original tokenizer by AS (default)' + \
+        '\n    - FrenchTokenizer: Tokenizer for French'
    )
    # END
    args = parser.parse_args()

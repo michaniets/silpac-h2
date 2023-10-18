@@ -34,7 +34,8 @@ class Tokenizer():
         
         TOKENIZER_TYPE_TO_CLASS_MAP = {
           'Tokenizer':  Tokenizer,
-          'ASTokenizer': ASTokenizer
+          'ASTokenizer': ASTokenizer,
+          'FrenchTokenizer': FrenchTokenizer
         }
         if tokenizer_type not in TOKENIZER_TYPE_TO_CLASS_MAP:
               raise ValueError('Bad tokenizer type {}'.format(tokenizer_type))
@@ -56,16 +57,15 @@ class Tokenizer():
         
         # Step 1. First, deal with structures which may include whitespace
         # CORRECTIONS (of the kind vì [: qui ])
-        m = re.match(r'([^\s]+)\s+\[:\s*([^\]]+)\s*\]', s) 
-        if m and form == STANDARD:
-            # Replace with the correction
-            s = s[:m.start()] + ' ' + m.group(2).replace(' ', '-') + ' ' + s[m.end():]
-        elif m:
-            # Replace with the uttered word
-            s = s[:m.start()] + ' ' + m.group(1) + ' ' + s[m.end():]
-            
-        # TODO: repetitions, other coding of corrections in French CHILDES
-            
+        ms = re.findall(r'([^\s]+)\s+\[:\s*([^\]]+)\s*\]', s)
+        for m in ms:
+            if form == STANDARD:
+                # Replace with the correction
+                s = s[:m.start()] + ' ' + m.group(2).replace(' ', '-') + ' ' + s[m.end():]
+            else:
+                # Replace with the uttered word
+                s = s[:m.start()] + ' ' + m.group(1) + ' ' + s[m.end():]
+        
         # Step 2. Parse whitespace-delimited items
         s = re.sub(r'\s+', ' ', s)  # reduce spaces
         toks = []
@@ -83,7 +83,9 @@ class Tokenizer():
             tok = re.sub(r'^+.*[\.\?\!]$', '.', tok) # Replace all + events ending in a period or question with a period
             tok = re.sub(r'^+.*', '', tok) # Delete all other + events
             tok = re.sub(r'^\[[<>]\]$', '', tok) # Delete all overlap event markers
+            tok = re.sub(r'^\[/[^\]]+\]$', ';', tok) # Replace all repetition markers with a semi-colon
             tok = re.sub(r'[_=]', '\s', tok) # Replace all underscores and equals signs with spaces
+            tok = re.sub(r'[<>]', '', tok) # Delete all angle brackets
             
             if tok: toks.append(tok)
             
@@ -105,7 +107,7 @@ class ASTokenizer(Tokenizer):
         s = re.sub(r'0faire ', 'faire ', s) # faire + Inf is transcribed as '0faire' in York
         s = re.sub(r'<[^>]+> \[//?\] ', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
         s = re.sub(r'\[\!\] ?', ' ', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
-        s = re.sub(r'<([^>]+)>\s+\[%[^\]]+\]', '\1', s) # corrections: qui <va> [% sdi=vais] la raconter . > va
+        s = re.sub(r'<([^>]+)>\s+\[%[^\]]+\]', '\1', s) # corrections: qui <va> [% sdi=vais] la raconter . > va. TR actually coded as a comment.
         s = re.sub(r'<(0|www|xxx|yyy)[^>]+> ?', '', s) # repetitions (not in %mor), e.g. mais <je t'avais dit que> [/] je t'avais dit que ...
         s = re.sub(r'\+[<,]? ?', '', s)  
         s = re.sub(r'(0|www|xxx|yyy)\s', '', s)  # xxx = incomprehensible – yyy = separate phonetic coding
@@ -132,4 +134,13 @@ class ASTokenizer(Tokenizer):
         s = re.sub(reEndString, r' \1', s)
         s = re.sub(r'\s+', ' ', s)  # reduce spaces
         return(s)
+        
+def FrenchTokenizer(Tokenizer):
+    """
+    Uses the generic cleanUtt method (inherited) and at the moment
+    just calls ASTokenizer.tokenise for tokenization.
+    """
+    
+    def tokenise(self, s):
+        return ASTokenizer.tokenise(self, s)
     
