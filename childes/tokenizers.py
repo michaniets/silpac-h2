@@ -41,7 +41,7 @@ class Tokenizer():
               raise ValueError('Bad tokenizer type {}'.format(tokenizer_type))
         return TOKENIZER_TYPE_TO_CLASS_MAP[tokenizer_type]()
         
-    def cleanUtt(self, s, form=DEFAULT):
+    def cleanUtt(self, s, form=0):
         """
         Global method to parse CHILDES markup (pre-tokenization), no
         language-specific settings.
@@ -57,9 +57,8 @@ class Tokenizer():
         
         # Step 1. First, deal with structures which may include whitespace
         # CORRECTIONS (of the kind vì [: qui ])
-        ms = re.findall(r'([^\s]+)\s+\[:\s*([^\]]+)\s*\]', s)
-        for m in ms:
-            if form == STANDARD:
+        for m in re.finditer(r'([^\s]+)\s+\[:\s*([^\]]+)\s*\]', s):
+            if form == self.STANDARD:
                 # Replace with the correction
                 s = s[:m.start()] + ' ' + m.group(2).replace(' ', '-') + ' ' + s[m.end():]
             else:
@@ -69,23 +68,24 @@ class Tokenizer():
         # Step 2. Parse whitespace-delimited items
         s = re.sub(r'\s+', ' ', s)  # reduce spaces
         toks = []
-        for tok in s.split('\s'):
-            if form == STANDARD:
+        for tok in s.split(' '):
+            if form == self.STANDARD:
                 # Where the most standard form of a token is sought.
-                tok = re.sub(r'&[~\-+]', '', tok) # &- initials
+                tok = re.sub(r'&[~\-\+]?', '', tok) # &- initials
                 tok = re.sub(r'[()]', '', tok) # Remove all parentheses (corrections).
         
             # General replacements
-            tok = re.sub(r'^\(\.+\)', '', tok) # Delete all pauses.
+            tok = re.sub(r'^\[[<>]\]$', '', tok) # Delete all overlap event markers
+            tok = re.sub(r'[<>]', '', tok) # Delete all angle brackets (after overlaps)
+            tok = re.sub(r'^\(\.+\)$', '', tok) # Delete all pauses.
             tok = re.sub(r'@[^\s]+', '', tok) # @ tags: removed in all forms
             tok = re.sub(r'^0.*', '', tok) # Delete all 0s (they weren't realized)
             tok = re.sub(r'^&=.*', '', tok) # Delete all &= (events)
-            tok = re.sub(r'^+.*[\.\?\!]$', '.', tok) # Replace all + events ending in a period or question with a period
-            tok = re.sub(r'^+.*', '', tok) # Delete all other + events
-            tok = re.sub(r'^\[[<>]\]$', '', tok) # Delete all overlap event markers
-            tok = re.sub(r'^\[/[^\]]+\]$', ';', tok) # Replace all repetition markers with a semi-colon
-            tok = re.sub(r'[_=]', '\s', tok) # Replace all underscores and equals signs with spaces
-            tok = re.sub(r'[<>]', '', tok) # Delete all angle brackets
+            tok = re.sub(r'^\+.*[\.\?\!]$', '.', tok) # Replace all + events ending in a period or question with a period
+            tok = re.sub(r'^\+.*', '', tok) # Delete all other + events
+            tok = re.sub(r'^\[/[^\]]*\]$', ';', tok) # Replace all repetition markers with a semi-colon
+            tok = re.sub(r'[_=]', ' ', tok) # Replace all underscores and equals signs with spaces
+            tok = re.sub(r'[“”]', '', tok) # Remove all speech marks (should be handled by tokenizer though)
             
             if tok: toks.append(tok)
             
@@ -123,7 +123,7 @@ class ASTokenizer(Tokenizer):
         # input:  unprocessed sentence
         # output: sentence tokenised for TreeTagger
         # 1) define cutoff characters and strings at beginning and end of tokens
-        reBeginChar = re.compile('(\[\|\{\(\/\'\´\`"»«°)') 
+        reBeginChar = re.compile('(\[\|\{\(\/\'\´\`"»«“”°)')  # TR added “” speech marks
         reEndChar = re.compile('(\]\|\}\/\'\`\"\),;:\!\?\%»«)') 
         reBeginString = re.compile('([dcjlmnstDCJLNMST]\'|[Qq]u\'|[Jj]usqu\'|[Ll]orsqu\')') 
         reEndString = re.compile('(-t-elles?|-t-ils?|-t-on|-ce|-elles?|-ils?|-je|-la|-les?|-leur|-lui|-mêmes?|-m\'|-moi|-nous|-on|-toi|-tu|-t\'|-vous|-en|-y|-ci|-là)') 
@@ -135,7 +135,7 @@ class ASTokenizer(Tokenizer):
         s = re.sub(r'\s+', ' ', s)  # reduce spaces
         return(s)
         
-def FrenchTokenizer(Tokenizer):
+class FrenchTokenizer(Tokenizer):
     """
     Uses the generic cleanUtt method (inherited) and at the moment
     just calls ASTokenizer.tokenise for tokenization.
